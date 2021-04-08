@@ -1,0 +1,22 @@
+CREATE TABLE player_info(
+	id integer,
+	first_name varchar(50),
+	last_name varchar(50),
+	name varchar(50),
+	position varchar(2),
+	shoots_catches char(1),
+	age smallint,
+	birth_city varchar(50),
+	birth_sp varchar(50),
+	nationality varchar(50),
+	height real,
+	weight smallint,
+	active bool,
+	rookie bool,
+	alternate_captain bool,
+	captain bool,
+	status varchar(3),
+	team_id smallint,
+	team_name varchar(50),
+	birth_date date
+);

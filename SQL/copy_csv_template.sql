@@ -1,0 +1,1 @@
+COPY team_info FROM '/Users/joelhoward/repos/NHLFantasyPy/team_info.csv' DELIMITER ',' CSV HEADER;

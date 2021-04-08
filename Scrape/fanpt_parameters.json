@@ -1,0 +1,17 @@
+{
+	"goals": 3,
+	"assists": 3,
+	"plusMinus": 1,
+	"pim": 0.5,
+	"powerPlayPoints": 1.5,
+	"shortHandedPoints": 2,
+	"gameWinningGoals": 1,
+	"shots": 0.25,
+	"fws": 0.1,
+	"hits": 0.2,
+	"blocked": 0.2,
+	"isWin": 3,
+	"goalsAgainst": -1,
+	"saves": 0.2,
+	"shutouts": 4
+}
