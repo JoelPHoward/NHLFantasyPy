@@ -10,11 +10,13 @@ library(DT)
 library(htmltidy)
 library(xml2)
 library(dplyr)
+library(rjson)
 
 setwd("~/repos/NHLFantasyPy/")
 yahoo_connect <- import("YahooAPI.yahoo_connect")
 
 PSQL_CREDENTIALS = fromJSON(file = "~/repos/NHLFantasyPy/PSQL_CREDENTIALS.json")
+YAHOO_CREDENTIALS = fromJSON(file = "~/repos/NHLFantasyPy/YAHOO_CREDENTIALS.json")
 
 db_con <- DBI::dbConnect(odbc::odbc(),
                          Driver   = "/usr/local/lib/psqlodbcw.so",
@@ -41,7 +43,7 @@ server <- function(input, output, session){
   
   #--------------------------Connect to Yahoo-----------------------#
   observeEvent(input$yahoo_code_btn, { 
-    rvals$yahoo <- yahoo_connect$YahooCon()
+    rvals$yahoo <- yahoo_connect$YahooCon(access_token = YAHOO_CREDENTIALS$access_token, refresh_token =  YAHOO_CREDENTIALS$refresh_token, client_id = YAHOO_CREDENTIALS$client_id, client_secret = YAHOO_CREDENTIALS$client_secret, league_id = YAHOO_CREDENTIALS$league_id)
     output$yahoo_code_url <- renderText(rvals$yahoo$authorization_url)
   })
   
