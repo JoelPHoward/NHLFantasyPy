@@ -4,6 +4,7 @@ suppressWarnings(library(XML))
 suppressWarnings(library(rjson))
 
 PSQL_CREDENTIALS = fromJSON(file = "~/repos/NHLFantasyPy/PSQL_CREDENTIALS.json")
+YAHOO_CREDENTIALS = fromJSON(file = "~/repos/NHLFantasyPy/YAHOO_CREDENTIALS.json")
 
 db_con <- DBI::dbConnect(odbc::odbc(),
                          Driver   = "/usr/local/lib/psqlodbcw.so",
@@ -17,8 +18,8 @@ source_python("get_best_roster.py")
 
 yahoo_connect <- import("YahooAPI.yahoo_connect")
 
-yahoo <- yahoo_connect$YahooCon()
-yahoo$authorization_url
+yahoo <- yahoo_connect$YahooCon(access_token = YAHOO_CREDENTIALS$access_token, refresh_token =  YAHOO_CREDENTIALS$refresh_token, client_id = YAHOO_CREDENTIALS$client_id, client_secret = YAHOO_CREDENTIALS$client_secret, league_id = YAHOO_CREDENTIALS$league_id)
+message(yahoo$authorization_url)
 
 cat("Enter yahoo code: ");
 code = readLines("stdin", n = 1);
@@ -35,7 +36,7 @@ top_players <- dbGetQuery(
         game_logs.fanpts
         FROM game_logs JOIN player_info
         ON game_logs.player_id = player_info.player_id
-        WHERE game_logs.date =", date, " AND game_logs.fanpts > 0 ORDER BY game_logs.fanpts DESC;"
+        WHERE game_logs.date ='", date, "' AND game_logs.fanpts > 0 ORDER BY game_logs.fanpts DESC;"
     ))
 
 dbDisconnect(db_con)
@@ -97,17 +98,17 @@ forwards <- filter_players(players_lst, c(1,1,1,0,0,0))
 defence <- filter_players(players_lst, c(0,0,0,1,0,0))
 goalies <- filter_players(players_lst, c(0,0,0,0,0,1))
 
-print(paste0("Number of forwards: ", length(forwards)))
-print(paste0("Number of defence: ",  length(defence)))
-print(paste0("Number of goalies: ",  length(goalies)))
+#cat(paste0("Number of forwards: ", length(forwards), "\n"))
+#cat(paste0("Number of defence: ",  length(defence), "\n"))
+#cat(paste0("Number of goalies: ",  length(goalies), "\n"))
 
 forward_sols = list()
 defence_sols = list()
 # Loop through number of utils 0,1,2
 for(num_util in 1:3){
-    print(paste0("Forwards: ", num_util-1))
+    #cat(paste0("Forwards: ", num_util-1, "\n"))
     forward_sols[[num_util]] <- choose_roster(list(), c(2,2,2,0,num_util-1,0), forwards)
-    print(paste0("Defence: ", num_util-1))
+    #cat(paste0("Defence: ", num_util-1, "\n"))
     defence_sols[[num_util]] <- choose_roster(list(), c(0,0,0,4,num_util-1,0), defence)
 }
 goalie_sols = choose_roster(list(), c(0,0,0,0,0,2), goalies)
@@ -121,11 +122,11 @@ for(num_util in 1:3){
     
     tot_pts <- forward_choice[[1]]+defence_choice[[1]]+goalie_sols[[1]]
     team <- c(forward_choice[[2]], defence_choice[[2]], goalie_sols[[2]])
-    print(paste0("    Forward Points: ", forward_choice[[1]]))
-    print(paste0("    Defence Points: ", defence_choice[[1]]))
-    print(paste0("    Goalie  Points: ", goalie_sols[[1]]))
-    print(paste0("    Total Points: ", tot_pts))
-    print(paste0("    Player Choices: ", paste(team, collapse = ",")))
+    #cat(paste0("    Forward Points: ", forward_choice[[1]], "\n"))
+    #cat(paste0("    Defence Points: ", defence_choice[[1]], "\n"))
+    #cat(paste0("    Goalie  Points: ", goalie_sols[[1]], "\n"))
+    #cat(paste0("    Total Points: ", tot_pts, "\n"))
+    #cat(paste0("    Player Choices: ", paste(team, collapse = ","), "\n"))
     
     if(tot_pts > max_pts){
         max_pts <- tot_pts
@@ -137,4 +138,5 @@ df <- top_players[best_team,2:3]
 df <- rbind(df[order(df[,2], decreasing = TRUE),], c("TOTAL", max_pts))
 colnames(df) <- c("Player", "FanPts")
 rownames(df) <- NULL
+cat(paste0("\nBest Roster from ", date, ":\n"))
 print(df)
