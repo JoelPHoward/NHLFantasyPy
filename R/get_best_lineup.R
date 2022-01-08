@@ -63,7 +63,7 @@ for(i in 1:nrow(top_players)){
             name <- spl[2]
         }
     }
-    yahoo_pos <- unlist(xmlToList(xmlParse(yahoo$endpoint_xml(endpoint = paste0("https://fantasysports.yahooapis.com/fantasy/v2/league/nhl.l.17580/players;search=", name))))$league$players$player$eligible_positions)
+    yahoo_pos <- unlist(xmlToList(xmlParse(yahoo$endpoint_xml(endpoint = paste0("https://fantasysports.yahooapis.com/fantasy/v2/league/nhl.l.", YAHOO_CREDENTIALS$league_id, "/players;search=", name))))$league$players$player$eligible_positions)
     pos_vec <- pos_to_vec(yahoo_pos)
     
     if(pos_vec[5] == 1){

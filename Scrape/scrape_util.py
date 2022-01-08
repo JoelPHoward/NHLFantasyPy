@@ -18,13 +18,16 @@ from tabulate import tabulate
 text_col1 = 'green'
 text_col2 = 'yellow'
 text_col3 = 'red'
-locations = pd.DataFrame(data = {'state_prov': ['New Jersey', 'New York', 'New York', 'Pennsylvania', 'Pennsylvania', 'Massachusetts', 'New York', 'Quebec', 'Ontario', 'Ontario', 'North Carolina', 'Florida', 'Florida', 'District of Columbia', 'Illinois', 'Michigan', 'Tennessee', 'Missouri', 'Alberta', 'Colorado', 'Alberta', 'British Colombia', 'California', 'Texas', 'California', 'California', 'Ohio', 'Minnesota', 'Manitoba', 'Arizona', 'Nevada'], 
-	'country': ['USA', 'USA', 'USA', 'USA', 'USA', 'USA', 'USA', 'CAN', 'CAN', 'CAN', 'USA', 'USA', 'USA', 'USA', 'USA', 'USA', 'USA', 'USA', 'CAN', 'USA', 'CAN', 'CAN', 'USA', 'USA', 'USA', 'USA', 'USA', 'USA', 'CAN', 'USA', 'USA']})
+locations = pd.DataFrame(data = {'state_prov': ['New Jersey', 'New York', 'New York', 'Pennsylvania', 'Pennsylvania', 'Massachusetts', 'New York', 'Quebec', 'Ontario', 'Ontario', 'North Carolina', 'Florida', 'Florida', 'District of Columbia', 'Illinois', 'Michigan', 'Tennessee', 'Missouri', 'Alberta', 'Colorado', 'Alberta', 'British Colombia', 'California', 'Texas', 'California', 'California', 'Ohio', 'Minnesota', 'Manitoba', 'Arizona', 'Nevada', 'Washington'], 
+	'country': ['USA', 'USA', 'USA', 'USA', 'USA', 'USA', 'USA', 'CAN', 'CAN', 'CAN', 'USA', 'USA', 'USA', 'USA', 'USA', 'USA', 'USA', 'USA', 'CAN', 'USA', 'CAN', 'CAN', 'USA', 'USA', 'USA', 'USA', 'USA', 'USA', 'CAN', 'USA', 'USA', 'USA']})
 
 
 PARAMETERS_TO_SCRAPE = rapidjson.load(open('/Users/joelhoward/repos/NHLFantasyPy/Scrape/parameters_to_scrape.json'))
 FANPT_PARAMS = rapidjson.load(open('/Users/joelhoward/repos/NHLFantasyPy/Scrape/fanpt_parameters.json'))
 
+historical = pd.read_csv('/Users/joelhoward/repos/NHLFantasyPy/data/historical_player_ids.csv')
+historical_ids = [i[0] for i in historical.values]
+historical_names = [i[1] for i in historical.values]
 
 def print_colour(x, colour, end = "\n"):
 	cprint(x, colour, end = end)
@@ -59,7 +62,7 @@ def getTeamLocations(nhl_teams):
 def getNHLTeamInfo(teams = None, verbose = False):
 	nhl_teams = rapidjson.loads(requests.get("https://statsapi.web.nhl.com/api/v1/teams").text)["teams"]
 	team_locations = getTeamLocations(nhl_teams)
-	teamInfo_df = pd.DataFrame(index = range(len(nhl_teams)), columns = ("team_id", "name", "city", "state_prov", "country", "division", "conference"))
+	teamInfo_df = pd.DataFrame(index = range(len(nhl_teams)), columns = ("team_id", "team_name", "city", "state_prov", "country", "division", "conference"))
 	for i in range(len(nhl_teams)):
 		teamInfo_df.iloc[i] = [nhl_teams[i]["id"], nhl_teams[i]["name"], nhl_teams[i]["locationName"], team_locations.iloc[i]["state_prov"], team_locations.iloc[i]["country"], nhl_teams[i]["division"]["name"], nhl_teams[i]["conference"]["name"]]
 	if teams is not None:
@@ -77,10 +80,16 @@ async def getCurrentRosters(team_ids, verbose = False):
 
 def getPlayerIds(nhl_rosters):
 	ids = []
+	names = []
 	for i in range(len(nhl_rosters)):
 		for j in range(len(nhl_rosters[i])):
-			ids.append({"player_id": nhl_rosters[i][j]["person"]["id"], "name": nhl_rosters[i][j]["person"]["fullName"]})
-	return pd.DataFrame(data = ids)
+			ids.append(nhl_rosters[i][j]["person"]["id"])
+			names.append(nhl_rosters[i][j]["person"]["fullName"])
+	for i in range(len(historical_ids)):
+		if historical_ids[i] not in ids:
+			ids.append(historical_ids[i])
+			names.append(historical_names[i])
+	return pd.DataFrame(data = {"player_id": ids, "name": names[i]})
 
 def makePlayerInfoDf(player):
 	keys = list(player.keys())
@@ -88,9 +97,14 @@ def makePlayerInfoDf(player):
 	if "shootsCatches" in keys:
 		shoots_catches = player["shootsCatches"]
 	else:
-		shoots_catches = "UNK"
+		shoots_catches = "U"
 	if "birthCity" in keys:
 		birth_city = player["birthCity"]
+		if len(re.findall(',',birth_city)) > 0:
+			if len(re.findall(', ',birth_city)) > 0:
+				birth_city = re.sub(', ', '-', birth_city)
+			else:
+				birth_city = re.sub(',', '-', birth_city)
 	else:
 		birth_city = "UNK"
 	if "birthStateProvince" in keys:
@@ -103,16 +117,38 @@ def makePlayerInfoDf(player):
 		nationality = player["birthCountry"]
 	else:
 		nationality = "UNK"
+	if player["active"]:
+		team_id = player["currentTeam"]["id"]
+		team_name = player["currentTeam"]["name"]
+	else:
+		team_id = 0
+		team_name = "None"
+	if "alternateCaptain" in keys:
+		alternateCaptain = player["alternateCaptain"]
+	else:
+		alternateCaptain = False
+	if "captain" in keys:
+		captain = player["captain"]
+	else:
+		captain = False
+	if "height" in keys:
+		height = float(player["height"].replace('"',"").replace("'","").replace(" ","."))
+	else:
+		height = 0.0
+	if "weight" in keys:
+		weight = player["weight"]
+	else:
+		weight = 0.0
 	return {"player_id": player["id"], "first_name": player["firstName"], \
 	"last_name": player["lastName"], "name": player["firstName"] + " " + player["lastName"], \
 	"position": player["primaryPosition"]["abbreviation"], "shoots_catches": shoots_catches, \
-	"age": player["currentAge"], "birth_city": birth_city, \
+	"birth_city": birth_city, \
 	"birth_sp": birth_sp, "nationality": nationality, \
-	"height": float(player["height"].replace('"',"").replace("'","").replace(" ",".")), \
-	"weight": player["weight"], "active": player["active"], \
-	"rookie": player["rookie"], "alternate_captain": player["alternateCaptain"], \
-	"captain": player["captain"], "status": player["rosterStatus"], \
-	"team_id": player["currentTeam"]["id"], "team_name": player["currentTeam"]["name"], \
+	"height": height, \
+	"weight": weight, "active": player["active"], \
+	"rookie": player["rookie"], "alternate_captain": alternateCaptain, \
+	"captain": captain, "status": player["rosterStatus"], \
+	"team_id": team_id, "team_name": team_name, \
 	"birth_date": player["birthDate"]}
 
 async def getNHLPlayerInfo(player_ids, verbose = False):
@@ -144,7 +180,10 @@ async def append_id(session, id, split, position):
 			json[i]["player_id"] = id
 			json[i]["position"] = position
 			json[i]["split"] = split
-	return json
+	if json == []:
+		return None
+	else:
+		return json
 
 async def getGameLogs(ids, splits, player_info, dates = None):
 	async with aiohttp.ClientSession() as session:
@@ -186,13 +225,17 @@ def home_away(x):
 		return "away"
 
 def getFaceOffWins(games, boxscores):
+	# faceoff wins only recorded after 1997-10-01
 	fws = []
 	for game in games:
 		x = re.search("(?<=game\/)(.*)(?=\/feed)", game[0]).string
 		if x in boxscores.keys():
 			player_stats = boxscores[x][game[1]]["players"]
-			if "skaterStats" in player_stats["ID" + str(game[2])]["stats"].keys():
-				fws.append(player_stats["ID" + str(game[2])]["stats"]["skaterStats"]["faceOffWins"])
+			if "ID" + str(game[2]) in player_stats.keys():
+				if "skaterStats" in player_stats["ID" + str(game[2])]["stats"].keys():
+					fws.append(player_stats["ID" + str(game[2])]["stats"]["skaterStats"]["faceOffWins"])
+				else:
+					fws.append(0)
 			else:
 				fws.append(0)
 		else:
@@ -311,7 +354,7 @@ def data_scrape(from_year = None, to_year = None, teams = None, players = None, 
 		game_logs = loop.run_until_complete(getGameLogs(ids = player_ids["player_id"], splits = [splits[s]], player_info = player_info, dates = dates))
 		if verbose:
 			print_colour("Getting Boxscores...", colour = text_col1, end = "\n")
-		player_input = [[game["game"]["link"], home_away(game["isHome"]), game["player_id"]] for split in game_logs for game in split]
+		player_input = [[game["game"]["link"], home_away(game["isHome"]), game["player_id"]] for split in game_logs if split is not None for game in split]
 		game_feeds = []
 		for i in player_input:
 			if i[0] not in game_feeds:
@@ -323,13 +366,16 @@ def data_scrape(from_year = None, to_year = None, teams = None, players = None, 
 		if len(err) > 0:
 			for index in sorted(boxscores[1], reverse=True):
 				del player_input[index]
-		fws = getFaceOffWins(player_input, boxscores)
+		if int(splits[s]) > 19981999:
+			fws = getFaceOffWins(player_input, boxscores)
+		else:
+			fws = [0]*len(player_input)
 		game_logs_exp = []
 		for i in game_logs:
 			if type(i) is list:
 				for j in i:
 					game_logs_exp.append(j)
-			else:
+			elif i is not None:
 				game_logs_exp.append(i)
 		del game_logs
 		stat_df(game_logs = game_logs_exp, df_keys = df_keys, fws = fws, file_name = os.path.join(tmp_dir, curr_file))

@@ -1,6 +1,6 @@
 CREATE TABLE team_info(
-	id smallint,
-	name varchar(50),
+	team_id smallint,
+	team_name varchar(50),
 	city varchar(50),
 	state_prov varchar(50),
 	country varchar(50),

@@ -11,12 +11,16 @@ library(htmltidy)
 library(xml2)
 library(dplyr)
 library(rjson)
+library(stringr)
 
 setwd("~/repos/NHLFantasyPy/")
+
+source("./R/app/app_utils.R")
+
 yahoo_connect <- import("YahooAPI.yahoo_connect")
 
-PSQL_CREDENTIALS = fromJSON(file = "~/repos/NHLFantasyPy/PSQL_CREDENTIALS.json")
-YAHOO_CREDENTIALS = fromJSON(file = "~/repos/NHLFantasyPy/YAHOO_CREDENTIALS.json")
+PSQL_CREDENTIALS <- fromJSON(file = "~/repos/NHLFantasyPy/PSQL_CREDENTIALS.json")
+YAHOO_CREDENTIALS <- fromJSON(file = "~/repos/NHLFantasyPy/YAHOO_CREDENTIALS.json")
 
 db_con <- DBI::dbConnect(odbc::odbc(),
                          Driver   = "/usr/local/lib/psqlodbcw.so",
@@ -24,6 +28,8 @@ db_con <- DBI::dbConnect(odbc::odbc(),
                          UID      = PSQL_CREDENTIALS$user,
                          PWD      = PSQL_CREDENTIALS$password,
                          Port     = 5432)
+
+team_info <- dbGetQuery(conn = db_con, statement = paste0("SELECT * FROM team_info;"))
 
 server <- function(input, output, session){
   
@@ -64,16 +70,15 @@ server <- function(input, output, session){
   #--------------------------------------------------------------------#
   
   output$player_select_1 <- renderUI({
-    players <- dbGetQuery(conn = db_con, statement = paste0("SELECT name FROM player_info;"))[,1,drop=TRUE]
+    players <- dbGetQuery(conn = db_con, statement = paste0("SELECT name || ' (' || player_id || ')' AS id FROM player_info;"))[,1,drop=TRUE]
     selectInput("player_select_1", "Select a Player", choices = players, selected = sample(players, 1), multiple = TRUE)
   })
   output$vs_team <- renderUI({
-    selectInput("vs_team", "Versus", choices = c("All Teams", dbGetQuery(conn = db_con, statement = paste0("SELECT name FROM team_info;"))[,1,drop=TRUE]), selected = "All Teams", multiple = FALSE)
+    selectInput("vs_team", "Versus", choices = c("All Teams", dbGetQuery(conn = db_con, statement = paste0("SELECT team_name FROM team_info;"))[,1,drop=TRUE]), selected = "All Teams", multiple = FALSE)
   })
   
   
   get_player_data <- function(players){
-    id <- dbGetQuery(conn = db_con, statement = paste0("SELECT player_id FROM player_info WHERE ", sub(" OR$", "", paste("name =", sQuote(players, "'"), "OR", collapse = " ")), ";"))[,1,drop=TRUE]
     df <- dbGetQuery(conn = db_con, statement = paste0(
       "SELECT game_logs.split, 
       game_logs.date, 
@@ -84,24 +89,26 @@ server <- function(input, output, session){
       player_info.team_name, 
       game_logs.opp_id, 
       game_logs.fanpts, 
-      player_info.name || ' - ' || player_info.position || ' - ' || player_info.status AS label 
+      player_info.name || ' - ' || player_info.position || ' - ' || player_info.player_id AS label 
       FROM game_logs JOIN player_info
       ON game_logs.player_id = player_info.player_id 
-      WHERE ", sub(" OR$", "", paste("game_logs.player_id =", id, "OR", collapse = " ")), ";"
+      WHERE ", sub(" OR$", "", paste("game_logs.player_id =", players, "OR", collapse = " ")), ";"
     ))
-    df$month <- gsub("-","",stringr::str_match(df$date, "-..-")[,1])
+    df$month <- gsub("-","",str_match(df$date, "-..-")[,1])
+
     return(df)
   }
   
   observeEvent(input$player_select_1, {
     if(all(!is.null(input$player_select_1))){
-      to_update <- input$player_select_1[which(input$player_select_1 %in% names(rvals$data_df) == FALSE)]
+      ids <- str_match(string = input$player_select_1, pattern = "[0-9]+")[,1]
+      to_update <- ids[which(ids %in% names(rvals$data_df) == FALSE)]
       if(!is.null(rvals$data_df)){
-        keep <- rvals$data_df[which(names(rvals$data_df) %in% input$player_select_1),]
+        keep <- rvals$data_df[which(names(rvals$data_df) %in% ids),]
       }else{
         keep <- NULL
       }
-      add <- get_player_data(to_update)
+      add <- get_player_data(as.numeric(to_update))
       rvals$data_df <- rbind(keep, add)
     }else{
       rvals$data_df <- NULL
@@ -123,24 +130,26 @@ server <- function(input, output, session){
     }
     df <- rvals$data_df[which(rvals$data_df$date>=input$between_time[1] & rvals$data_df$date<=input$between_time[2]),]
     if(input$vs_team != "All Teams"){
-      df <- df[which(df$opp_id == input$vs_team),]
+      df <- df[which(df$opp_id == team_info$team_id[which(team_info$team_name == input$vs_team)]),]
       if(nrow(df) == 0){
         showModal(modalDialog(p("No Data found that matches specified filters"), title = "Warning"), session = getDefaultReactiveDomain())
         return(NULL)
       }
     }
-    players_in_data <- input$player_select_1[which(input$player_select_1%in%unique(df$name))]
-    df$name <- factor(df$name, levels = players_in_data)
-    df$label <- factor(df$label, levels = df$label[match(levels(df$name), sub(" -.*","",df$label))])
+    players_in_data <- input$player_select_1[which(input$player_select_1%in%unique(paste0(df$name, " (", df$player_id, ")")))]
+    #df$name <- factor(df$name, levels = players_in_data)
+    df$label <- factor(df$label, levels = unique(df$label)[match(str_match(string = players_in_data, pattern = "[0-9]+")[,1], unique(df$player_id))])
     df$split <- factor(df$split, levels = sort(unique(df$split)))
     if(input$by_time == "Season"){
       p <- ggplot(df, aes(x = split, y = fanpts)) + 
         geom_boxplot(colour = "red", fill = "white", outlier.shape = NA) +
-        geom_jitter(colour = "black", alpha = 0.5)
+        geom_jitter(colour = "black", alpha = 0.5) +
+        stat_summary(fun.y = mean, geom="point",colour="darkred", size=3)
     }else if(input$by_time == "Month"){
       p <- ggplot(df, aes(x = month, y = fanpts)) + 
         geom_boxplot(colour = "red", fill = "white", outlier.shape = NA) +
-        geom_jitter(colour = "black", alpha = 0.5)
+        geom_jitter(colour = "black", alpha = 0.5) +
+        stat_summary(fun.y = mean, geom="point",colour="darkred", size=3)
     }else{
      p <- ggplot(df, aes(x = date, y = fanpts)) +
         geom_point(aes(color = fanpts), alpha = 0.3) + 
@@ -158,8 +167,9 @@ server <- function(input, output, session){
     
     g <- ggplot_gtable(ggplot_build(p))
   
-    logos <- unlist(lapply(unique(as.character(df$name))[match(players_in_data, as.character(unique(df$name)))], function(x){
-      image_read(paste0("~/repos/NHLFantasyPy/R/app/www/team_logos/",df$team_id[which(df$name == x)][1],".gif"))
+    logos <- unlist(lapply(unique(df$player_id)[match(str_match(string = players_in_data, pattern = "[0-9]+")[,1], unique(df$player_id))], function(x){
+      idx <- which(df$player_id == x)
+      image_read(paste0("~/repos/NHLFantasyPy/R/app/www/team_logos/",df$team_id[idx][length(idx)],".gif"))
     }))
     
     n_plots <- length(unique(df$player_id))
@@ -204,6 +214,41 @@ server <- function(input, output, session){
       )
     ) %>% arrange(desc(total))
     output$table1_2 <- DT::renderDataTable(df)
+  })
+  
+  #------- Team Summary -------#
+  output$select_team <- renderUI({
+    teams <- rvals$yahoo$get_teams()
+    selectInput("select_team", label = "Select Team", choices = teams$name, selected = teams$name[1], multiple = FALSE)
+  })
+  
+  output$select_date_range <- renderUI({
+    sliderInput("select_date_range", label = "Date Range", min = as.Date("2018-01-01"), max = Sys.Date(), value = c(as.Date("2018-01-01"), Sys.Date()))
+  })
+  
+  summary_df_rv <- reactiveValues(df = NULL)
+  observeEvent(input$get_summary, {
+    req(input$select_team, input$select_date_range, input$filters)
+    teams <- rvals$yahoo$get_teams()
+    summary_df_rv$df <- team_summary(yahoo = rvals$yahoo, db_con = db_con, team_info = team_info, team = teams$id[which(teams$name == input$select_team)], start_date = input$select_date_range[1], end_date = input$select_date_range[2])
+  })
+  
+  output$team_summary_plot <- renderPlot({
+    req(input$select_team, input$select_date_range, input$filters, summary_df_rv$df)
+    sel_pos <- pos_to_vec(input$filters)[-5]
+    filt_df <- summary_df_rv$df[which(rowSums(sweep(summary_df_rv$df[,4:8], 2, sel_pos, "+") > 1) > 0),]
+    rank_df <- data.frame(name = unique(filt_df$name), fanpts = rep(0, length(unique(filt_df$name))))
+    for(i in 1:nrow(rank_df)){
+      rank_df$fanpts[i] <- sum(filt_df$fanpts[which(filt_df$name == rank_df$name[i])])
+    }
+    rank_df <- rank_df[order(rank_df$fanpts),]
+    rank_df$name <- factor(rank_df$name, levels = rank_df$name)
+    ggplot(rank_df, aes(x = name, y = fanpts)) + 
+      geom_bar(aes(fill = fanpts), stat = 'identity') +
+      scale_fill_gradient(low = "lightgrey", high = "purple") +
+      coord_flip() + 
+      theme_base() + 
+      theme(plot.background = element_blank(), text = element_text(size = 10))
   })
 
   #------- custom endpoint explorer -------#

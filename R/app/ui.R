@@ -1,8 +1,20 @@
 library(shiny)
 library(shinycssloaders)
 library(htmltidy)
+library(shinythemes)
+
+slider_css <- "
+.irs-bar,
+.irs-bar-edge,
+.irs-single,
+.irs-grid-pol {
+  background: red;
+  border-color: red;
+}
+"
 
 ui <- navbarPage(
+  theme = shinytheme('yeti'),
   "FANTASY HOCKEY",
   tabPanel(
     "Connect",
@@ -31,7 +43,10 @@ ui <- navbarPage(
         uiOutput("player_select_1"),
         uiOutput("vs_team"),
         radioButtons("by_time", label = "Show data by:", choices = c("Season", "Month", "Date"), selected = "Season"),
-        uiOutput("between_time"),
+        div(
+          tags$style(HTML(".js-irs-2 .irs-single, .js-irs-2 .irs-bar-edge, .js-irs-2 .irs-bar {background: green}")),
+          uiOutput("between_time")
+        ),
         actionButton("get_all_rostered_players", label = "Get all players on existing fantasy rosters")
       ),
       fluidRow(
@@ -63,6 +78,19 @@ ui <- navbarPage(
   ),
   tabPanel(
     "Player Classifier"
+  ),
+  tabPanel(
+    "Team Summary",
+    sidebarPanel(
+      uiOutput("select_team"),
+      uiOutput("select_date_range"),
+      actionButton("get_summary", "Get Summary"),
+      br(),
+      checkboxGroupInput("filters", "Filters", choices = c("C", "LW", "RW", "D", "G"), selected = c("C", "LW", "RW", "D", "G"))
+    ),
+    mainPanel(
+      plotOutput("team_summary_plot")
+    )
   ),
   tabPanel(
     "Yahoo Endpoint Viewer",
